@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIP Notebook Calculator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body { background-color: #222; display: flex; flex-direction: column; align-items: center; padding: 5px; font-family: 'Segoe UI', Arial, sans-serif; color: #fff; margin: 0; }
+        
+        .toolbar { 
+            background: #f8f9fa; padding: 12px; border-radius: 15px; margin-bottom: 10px; 
+            display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5); width: 96%; color: #000;
+        }
+        input, select, button { padding: 8px 10px; font-size: 13px; border: 1px solid #ccc; border-radius: 8px; font-weight: bold; }
+        
+        .btn-undo { background: #6f42c1; color: white; border: none; cursor: pointer; }
+        .btn-delete { background: #fd7e14; color: white; border: none; cursor: pointer; }
+        .btn-green { background: #28a745; color: white; border: none; cursor: pointer; }
+        .btn-blue { background: #007bff; color: white; border: none; cursor: pointer; }
+        .btn-red { background: #dc3545; color: white; border: none; cursor: pointer; }
+        .btn-purple { background: #a55eea; color: white; border: none; cursor: pointer; }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: #fff; padding: 20px; border-radius: 15px; width: 90%; max-width: 400px; color: #000; position: relative; }
+        #quickInput { width: 100%; height: 200px; font-size: 22px; padding: 10px; border: 2px solid #007bff; border-radius: 8px; box-sizing: border-box; font-family: monospace; resize: none; line-height: 1.4; }
+
+        .notebook-page { 
+            background-color: white; width: 100%; max-width: 800px; min-height: 1000px; 
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8); border-left: 25px solid #ffebeb; 
+            padding: 20px 10px; position: relative; color: #000; overflow: hidden;
+            background-image: linear-gradient(#d1e9ff 1px, transparent 1px); background-size: 100% 35px;
+        }
+
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 3px solid #333; padding-bottom: 5px; }
+        #headerName { font-size: 22px; font-weight: 900; color: #d63384; text-transform: uppercase; background: #fff0f6; padding: 4px 10px; border-radius: 8px; }
+        #displayDate { font-size: 18px; font-weight: bold; color: #0d6efd; background: #e7f1ff; padding: 4px 10px; border-radius: 8px; border: 1px solid #0d6efd; }
+
+        #fractions-container { 
+            display: grid; 
+            grid-template-columns: repeat(8, 1fr); 
+            gap: 15px 2px; 
+            padding-top: 5px;
+        }
+        .fraction-item { display: flex; flex-direction: column; align-items: center; min-height: 55px; transition: 0.3s; }
+        .fraction-input { width: 100%; font-size: 17px; font-weight: 900; text-align: center; border: none; background: transparent; outline: none; font-family: 'Courier New', monospace; line-height: 1; margin: 0; }
+        .line { width: 90%; height: 2px; background-color: #000; margin: 1px 0; }
+        
+        .highlight-merge { background-color: #d4edda; border-radius: 5px; transform: scale(1.1); }
+
+        .footer-stats { margin-top: 40px; border-top: 4px double #000; padding-top: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .stat-box-ghar { color: #ffffff; background: #198754; padding: 8px 12px; border-radius: 10px; font-size: 20px; }
+        .stat-box-total { color: #ffffff; background: #dc3545; padding: 8px 12px; border-radius: 10px; font-size: 22px; }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <input type="date" id="dateInput" onchange="updateInfo()">
+        <select id="nameSelect" onchange="handleNameChange()">
+            <option value="">Select Game</option>
+            <option value="FARIDABAD">FARIDABAD</option>
+            <option value="GAZIYABAD">GAZIYABAD</option>
+            <option value="GALI">GALI</option>
+            <option value="DESAVER">DESAVER</option>
+            <option value="ADD_NEW" style="color: blue; font-weight: bold;">+ Add New Game</option>
+        </select>
+        <button class="btn-purple" onclick="openModal()">⚡ Quick Add</button>
+        
+        <div style="display: flex; gap: 5px; border: 1px solid #ccc; padding: 5px; border-radius: 8px; background: #eee;">
+            <input type="number" id="subAmount" placeholder="Amt" style="width: 55px;">
+            <button class="btn-red" style="padding:5px 8px;" onclick="subtractAndClean()">Cut</button>
+        </div>
+
+        <button class="btn-undo" onclick="undo()">♻️ Undo</button>
+        <input type="number" id="searchBox" style="width:60px;" placeholder="🔍 No." oninput="searchNumber()">
+        <button class="btn-delete" onclick="deleteLast()">⌫ Back</button>
+        <button class="btn-blue" onclick="sortItems('desc')">High-Low</button>
+        <button class="btn-green" onclick="downloadPage()">⬇ PNG</button>
+        <button class="btn-red" style="background:#000" onclick="clearAll()">🗑 Clear</button>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal()">&times;</span>
+            <div style="font-size:18px; font-weight:bold; margin-bottom:15px; text-align:center;">Quick Add</div>
+            <textarea id="quickInput" placeholder="01,02,03..."></textarea>
+            <button class="btn-green" style="width: 100%; margin-top: 15px;" onclick="processQuickAdd()">Confirm & Add</button>
+        </div>
+    </div>
+
+    <div class="notebook-page" id="captureArea">
+        <header>
+            <div id="headerName">SELECT NAME</div>
+            <div id="displayDate"></div>
+        </header>
+        <div id="fractions-container"></div>
+        <div class="footer-stats">
+            <div class="stat-box-ghar">GHAR: <span id="ghar-count">0</span></div>
+            <div class="stat-box-total">TOTAL: <span id="final-total">0</span></div>
+        </div>
+    </div>
+
+    <script>
+        let historyStack = [];
+
+        window.onload = () => {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('dateInput').value = today;
+            loadCustomNames();
+            loadData();
+
+            const qi = document.getElementById('quickInput');
+            qi.addEventListener('input', function() {
+                let val = this.value;
+                let lines = val.split('\n');
+                let currentLine = lines[lines.length - 1];
+                if (!currentLine.includes('(')) {
+                    let parts = currentLine.split(',');
+                    let lastPart = parts[parts.length - 1];
+                    if (lastPart.length === 2 && !isNaN(lastPart)) {
+                        this.value = val + ",";
+                    }
+                }
+            });
+
+            qi.addEventListener('keydown', function(e) {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    let val = this.value;
+                    let lastLine = val.split('\n').pop();
+                    if (!lastLine.includes('(')) {
+                        if (val.endsWith(',')) val = val.slice(0, -1);
+                        this.value = val + "()";
+                        this.selectionStart = this.selectionEnd = this.value.length - 1;
+                    } else {
+                        this.value = val + "\n";
+                        this.scrollTop = this.scrollHeight;
+                    }
+                }
+            });
+        };
+
+        function handleNameChange() {
+            const select = document.getElementById('nameSelect');
+            if (select.value === "ADD_NEW") {
+                const n = prompt("Naya Game Name:");
+                if (n && n.trim() !== "") {
+                    const opt = document.createElement("option");
+                    opt.value = opt.text = n.toUpperCase();
+                    select.add(opt, select.options[select.options.length - 1]);
+                    select.value = opt.value;
+                    saveCustomNames();
+                } else { select.value = ""; }
+            }
+            updateInfo();
+        }
+
+        function saveCustomNames() {
+            const select = document.getElementById('nameSelect');
+            const names = [];
+            for (let i = 5; i < select.options.length - 1; i++) names.push(select.options[i].value);
+            localStorage.setItem('vip_nb_names', JSON.stringify(names));
+        }
+
+        function loadCustomNames() {
+            const select = document.getElementById('nameSelect');
+            const saved = JSON.parse(localStorage.getItem('vip_nb_names') || '[]');
+            saved.forEach(name => {
+                const opt = document.createElement("option");
+                opt.value = opt.text = name;
+                select.add(opt, select.options[select.options.length - 1]);
+            });
+        }
+
+        function openModal() { document.getElementById('modalOverlay').style.display = 'flex'; document.getElementById('quickInput').focus(); }
+        function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; document.getElementById('quickInput').value = ''; }
+
+        function processQuickAdd() {
+            saveHistory();
+            const input = document.getElementById('quickInput').value;
+            const lines = input.split('\n');
+            let added = false;
+            lines.forEach(line => {
+                const match = line.match(/(.*?)\((.*?)\)/);
+                if (match) {
+                    const numbers = match[1].split(',').filter(n => n.trim() !== "");
+                    const amount = parseFloat(match[2]) || 0;
+                    numbers.forEach(num => {
+                        let n = num.trim();
+                        if(n.length === 1 && n !== "") n = "0" + n;
+                        if(n !== "") smartAddOrMerge(n, amount);
+                    });
+                    added = true;
+                }
+            });
+            if(added) { closeModal(); calculateTotal(); saveData(); }
+        }
+
+        function smartAddOrMerge(top, bottom) {
+            let merged = false;
+            document.querySelectorAll('.fraction-item').forEach(item => {
+                if (item.querySelector('.top-val').value === top && top !== "") {
+                    const b = item.querySelector('.bottom-val');
+                    b.value = (parseFloat(b.value) || 0) + bottom;
+                    item.classList.add('highlight-merge');
+                    setTimeout(() => item.classList.remove('highlight-merge'), 800);
+                    merged = true;
+                }
+            });
+            if (!merged) addNewFraction(top, bottom);
+        }
+
+        function subtractAndClean() {
+            saveHistory();
+            const sub = parseFloat(document.getElementById('subAmount').value) || 0;
+            if(sub <= 0) return;
+            document.querySelectorAll('.fraction-item').forEach(item => {
+                const b = item.querySelector('.bottom-val');
+                let cur = parseFloat(b.value) || 0;
+                if (cur > 0) {
+                    if (cur <= sub) item.remove();
+                    else b.value = cur - sub;
+                }
+            });
+            calculateTotal();
+        }
+
+        function saveHistory() {
+            const currentData = [];
+            document.querySelectorAll('.fraction-item').forEach(item => {
+                const t = item.querySelector('.top-val').value;
+                const b = item.querySelector('.bottom-val').value;
+                if(t || b) currentData.push({t, b});
+            });
+            historyStack.push(JSON.stringify(currentData));
+            if (historyStack.length > 30) historyStack.shift();
+        }
+
+        function undo() {
+            if (historyStack.length > 1) {
+                historyStack.pop(); 
+                renderData(JSON.parse(historyStack[historyStack.length - 1]));
+                saveData();
+            }
+        }
+
+        function renderData(data) {
+            const container = document.getElementById('fractions-container');
+            container.innerHTML = '';
+            data.forEach(d => addNewFraction(d.t, d.b));
+            addNewFraction();
+            calculateTotal();
+        }
+
+        function updateInfo() {
+            document.getElementById('headerName').innerText = document.getElementById('nameSelect').value || "SELECT NAME";
+            const d = new Date(document.getElementById('dateInput').value);
+            document.getElementById('displayDate').innerText = d.toLocaleDateString('en-GB');
+            saveData();
+        }
+
+        function handleTopInput(input) { if (input.value.length >= 2) input.parentElement.querySelector('.bottom-val').focus(); }
+
+        function checkEnter(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                saveHistory();
+                let t = event.target.parentElement.querySelector('.top-val').value;
+                if(t.length === 1 && t !== "") t = "0" + t;
+                const b = parseFloat(event.target.value) || 0;
+                event.target.parentElement.remove();
+                smartAddOrMerge(t, b);
+                addNewFraction();
+                calculateTotal();
+                saveData();
+            }
+        }
+
+        function addNewFraction(t='', b='') {
+            const container = document.getElementById('fractions-container');
+            const div = document.createElement('div');
+            div.className = 'fraction-item';
+            div.innerHTML = `
+                <input type="number" class="fraction-input top-val" value="${t}" placeholder="00" oninput="handleTopInput(this)">
+                <div class="line"></div>
+                <input type="number" class="fraction-input bottom-val" value="${b}" placeholder="0" oninput="calculateTotal()" onkeydown="checkEnter(event)">
+            `;
+            container.appendChild(div);
+            if(!t) div.querySelector('.top-val').focus();
+        }
+
+        function calculateTotal() {
+            let total = 0, ghar = 0;
+            document.querySelectorAll('.fraction-item').forEach(item => {
+                const b = parseFloat(item.querySelector('.bottom-val').value) || 0;
+                const t = item.querySelector('.top-val').value;
+                if(t) { ghar++; total += b; }
+            });
+            document.getElementById('final-total').innerText = total;
+            document.getElementById('ghar-count').innerText = ghar;
+            saveData();
+        }
+
+        function clearAll() {
+            if(confirm("Pura saaf karein?")) { saveHistory(); document.getElementById('fractions-container').innerHTML = ''; addNewFraction(); saveData(); }
+        }
+
+        function deleteLast() {
+            saveHistory();
+            const items = document.querySelectorAll('.fraction-item');
+            if (items.length > 1) items[items.length - 1].remove();
+            calculateTotal();
+        }
+
+        function searchNumber() {
+            const searchVal = document.getElementById('searchBox').value;
+            document.querySelectorAll('.fraction-item').forEach(item => {
+                const topVal = item.querySelector('.top-val').value;
+                item.style.backgroundColor = (searchVal !== "" && topVal === searchVal) ? "#ff0" : "transparent";
+            });
+        }
+
+        function sortItems(order) {
+            saveHistory();
+            const container = document.getElementById('fractions-container');
+            const items = Array.from(container.querySelectorAll('.fraction-item')).filter(i => i.querySelector('.top-val').value !== "");
+            items.sort((a, b) => (parseFloat(b.querySelector('.bottom-val').value) || 0) - (parseFloat(a.querySelector('.bottom-val').value) || 0));
+            container.innerHTML = '';
+            items.forEach(item => container.appendChild(item));
+            addNewFraction();
+        }
+
+        function saveData() {
+            const data = [];
+            document.querySelectorAll('.fraction-item').forEach(item => {
+                const t = item.querySelector('.top-val').value;
+                const b = item.querySelector('.bottom-val').value;
+                if(t || b) data.push({t, b});
+            });
+            localStorage.setItem('vip_nb_data', JSON.stringify(data));
+        }
+
+        function loadData() {
+            renderData(JSON.parse(localStorage.getItem('vip_nb_data') || '[]'));
+            updateInfo();
+        }
+
+        function downloadPage() {
+            html2canvas(document.getElementById('captureArea'), { scale: 3 }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = document.getElementById('headerName').innerText + '.png';
+                link.href = canvas.toDataURL();
+                link.click();
+            });
+        }
+    </script>
+</body>
+</html>
